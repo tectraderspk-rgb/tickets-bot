@@ -28,7 +28,7 @@ const PANEL_CHANNEL_ID = "1337266092812406844";
 const STAFF_ROLE_ID = "1405179388223291552";
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL;
 const GOODBYE_CHANNEL_ID = process.env.GOODBYE_CHANNEL;
-const CLOSED_CATEGORY_ID = "1407037252609118328"; // Closed Tickets Category
+const CLOSED_CATEGORY_ID = "1407037252609118328";
 
 // Log Channels
 const LOG_CHANNELS = {
@@ -49,7 +49,7 @@ const CATEGORY_IDS = {
     notreceived: "1477273792287084614",
     replacement: "1477273914928271391",
     other: "1477273728575475762",
-    teamreg: "1494731948722098276"   // Team Registration Category
+    teamreg: "1494731948722098276"
 };
 
 // Emojis
@@ -133,16 +133,82 @@ client.on("interactionCreate", async (interaction) => {
                 );
                 return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
             }
-            // Baaki sab commands same rakhe gaye hain
-            if (cmd === "kick") { /* ... same */ }
-            if (cmd === "ban") { /* ... same */ }
-            if (cmd === "mute") { /* ... same */ }
-            if (cmd === "unmute") { /* ... same */ }
-            if (cmd === "warn") { /* ... same */ }
-            if (cmd === "clear") { /* ... same */ }
-            if (cmd === "msg") { /* ... same */ }
-            if (cmd === "legit") { /* ... same */ }
-            if (["antispam", "antilink", "antimention"].includes(cmd)) { /* ... same */ }
+            // Baaki sab commands same (kick, ban, mute, etc.)
+            if (cmd === "kick") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const reason = interaction.options.getString("reason") || "No reason";
+                await target.kick(reason);
+                const log = new EmbedBuilder().setColor("#FFA500").setTitle("Member Kicked").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Reason", value: reason }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Kicked ${target.user.tag}`);
+            }
+            if (cmd === "ban") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const reason = interaction.options.getString("reason") || "No reason";
+                await target.ban({ reason });
+                const log = new EmbedBuilder().setColor("#FF0000").setTitle("Member Banned").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Reason", value: reason }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Banned ${target.user.tag}`);
+            }
+            if (cmd === "mute") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const mins = interaction.options.getInteger("minutes");
+                const reason = interaction.options.getString("reason") || "No reason";
+                await target.timeout(mins * 60000, reason);
+                const log = new EmbedBuilder().setColor("#E67E22").setTitle("Member Muted (Timeout)").addFields({ name: "Target", value: target.user.tag }, { name: "Duration", value: `${mins} mins` }, { name: "Moderator", value: interaction.user.tag }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Muted ${target.user.tag} for ${mins}m`);
+            }
+            if (cmd === "unmute") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                await target.timeout(null);
+                const log = new EmbedBuilder().setColor("#2ECC71").setTitle("Member Unmuted").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Unmuted ${target.user.tag}`);
+            }
+            if (cmd === "warn") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const key = `${interaction.guild.id}-${target.id}`;
+                if (!warnings[key]) warnings[key] = [];
+                warnings[key].push(Date.now());
+                const log = new EmbedBuilder().setColor("#F1C40F").setTitle("Warning Issued").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Total Warns", value: `${warnings[key].length}` }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`⚠️ Warned ${target.user.tag}. Total warnings: ${warnings[key].length}`);
+            }
+            if (cmd === "clear") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const amount = interaction.options.getInteger("amount");
+                await interaction.channel.bulkDelete(amount, true);
+                const log = new EmbedBuilder().setColor("#34495E").setTitle("Messages Cleared").addFields({ name: "Channel", value: `<#${interaction.channel.id}>` }, { name: "Amount", value: `${amount}` }, { name: "Moderator", value: interaction.user.tag }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply({ content: `✅ Deleted ${amount} messages`, ephemeral: true });
+            }
+            if (cmd === "msg") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const chanId = interaction.options.getString("channel_id");
+                const modal = new ModalBuilder().setCustomId(`modal_msg_${chanId}`).setTitle("Send Formatted Embed");
+                const input = new TextInputBuilder().setCustomId("msg_content").setLabel("Message Content").setStyle(TextInputStyle.Paragraph).setPlaceholder("Yahan apna formatted text paste karein...").setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(input));
+                return interaction.showModal(modal);
+            }
+            if (cmd === "legit") {
+                const embed = new EmbedBuilder().setColor("#8B0000").setTitle("Tec Trader - Embed").setDescription("**Are we Legit?**\n\n✅ = Yes\n❌ = Without Proof = Ban").setFooter({ text: "Developed by @BAASHAA • 3/10/2026" }).setTimestamp();
+                await interaction.channel.send({ embeds: [embed] });
+                return interaction.reply({ content: "✅ Sent!", ephemeral: true });
+            }
+            if (["antispam", "antilink", "antimention"].includes(cmd)) {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                let status;
+                if (cmd === "antispam") antiSpamChannels.has(interaction.channel.id) ? (antiSpamChannels.delete(interaction.channel.id), status = "disabled") : (antiSpamChannels.add(interaction.channel.id), status = "enabled");
+                if (cmd === "antilink") antiLinkChannels.has(interaction.channel.id) ? (antiLinkChannels.delete(interaction.channel.id), status = "disabled") : (antiLinkChannels.add(interaction.channel.id), status = "enabled");
+                if (cmd === "antimention") antiMentionChannels.has(interaction.channel.id) ? (antiMentionChannels.delete(interaction.channel.id), status = "disabled") : (antiMentionChannels.add(interaction.channel.id), status = "enabled");
+                return interaction.reply({ content: `✅ ${cmd} is now **${status}**`, ephemeral: true });
+            }
         }
 
         // ===== MODAL SUBMIT HANDLER =====
@@ -154,8 +220,6 @@ client.on("interactionCreate", async (interaction) => {
                 if (!channel) return interaction.reply({ content: "Invalid Channel ID", ephemeral: true });
                 const embed = new EmbedBuilder().setColor("#8B0000").setDescription(content);
                 await channel.send({ embeds: [embed] });
-                const log = new EmbedBuilder().setColor("#8B0000").setTitle("Formatted Message Sent").addFields({ name: "Target Channel", value: `<#${chanId}>` }, { name: "Sender", value: interaction.user.tag }).setTimestamp();
-                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
                 return interaction.reply({ content: "✅ Formatted message sent!", ephemeral: true });
             }
 
@@ -182,12 +246,14 @@ client.on("interactionCreate", async (interaction) => {
                 const p1Rank = interaction.fields.getTextInputValue("player1_rank");
                 const remaining = interaction.fields.getTextInputValue("remaining_players");
 
-                fields.push({ name: "Team Name", value: teamName });
-                fields.push({ 
-                    name: "Players", 
-                    value: `Player 1: ${p1Discord} | ${p1Riot} | ${p1Rank}\n\n${remaining}` 
-                });
+                fields = [
+                    { name: "Team Name", value: `\`\`\`${teamName}\`\`\`` },
+                    { name: "Players Rank", value: `\`\`\`${p1Rank} ${remaining}\`\`\`` },
+                    { name: "Player Discord Username", value: `\`\`\`${p1Discord} ${remaining}\`\`\`` },
+                    { name: "Players Ingame ID", value: `\`\`\`${p1Riot} ${remaining}\`\`\`` }
+                ];
             } else {
+                // Baaki sab tickets purane style mein
                 interaction.fields.fields.forEach(f => {
                     fields.push({ name: f.customId.toUpperCase(), value: f.value || "N/A" });
                 });
@@ -197,7 +263,8 @@ client.on("interactionCreate", async (interaction) => {
                 .setColor(0x2b2d31)
                 .setTitle(`Ticket - ${interaction.user.username}`)
                 .addFields(fields)
-                .setFooter({ text: `Opened by ${interaction.user.tag}` });
+                .setFooter({ text: `Opened by ${interaction.user.tag}` })
+                .setTimestamp();
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Primary),
@@ -262,7 +329,6 @@ client.on("interactionCreate", async (interaction) => {
             }
 
             if (interaction.customId === "close") {
-                // DM Transcript
                 try {
                     const messages = await interaction.channel.messages.fetch({ limit: 100 });
                     let transcript = `Transcript for: ${interaction.channel.name}\nGenerated: ${new Date().toLocaleString()}\n\n`;
@@ -274,11 +340,8 @@ client.on("interactionCreate", async (interaction) => {
                         content: `📄 **Your Ticket Transcript** - ${interaction.channel.name}`,
                         files: [{ attachment: buffer, name: `transcript-${interaction.channel.name}.txt` }]
                     });
-                } catch (e) {
-                    console.log("DM not sent");
-                }
+                } catch (e) {}
 
-                // Move to Closed Category
                 await interaction.channel.setParent(CLOSED_CATEGORY_ID).catch(() => {});
                 await interaction.channel.setName(`closed-${interaction.channel.name}`);
 
@@ -289,7 +352,7 @@ client.on("interactionCreate", async (interaction) => {
                     new ButtonBuilder().setCustomId("reopen").setLabel("Reopen").setStyle(ButtonStyle.Success),
                     new ButtonBuilder().setCustomId("delete").setLabel("Delete").setStyle(ButtonStyle.Danger)
                 );
-                return interaction.reply({ content: "Ticket Closed. ✅ Transcript sent to DM & moved to closed category.", components: [reopenRow] });
+                return interaction.reply({ content: "Ticket Closed. ✅ Transcript sent to DM.", components: [reopenRow] });
             }
 
             if (interaction.customId === "reopen") {
@@ -318,38 +381,131 @@ client.on("interactionCreate", async (interaction) => {
                 return interaction.channel.delete();
             }
         }
-    } catch (err) { 
-        console.error(err); 
+    } catch (err) {
+        console.error(err);
     }
 });
 
-// ================= Baaki sab events same rakhe gaye hain (Role, Server, Message, VC, Join/Leave) =================
+// ================= ALL OTHER EVENTS (Same as your old code) =================
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-    // ... your original code
+    const oldRoles = oldMember.roles.cache;
+    const newRoles = newMember.roles.cache;
+    if (oldRoles.size !== newRoles.size) {
+        const added = newRoles.filter(r => !oldRoles.has(r.id)).first();
+        const removed = oldRoles.filter(r => !newRoles.has(r.id)).first();
+        let embed = new EmbedBuilder().setColor("#5865F2").setAuthor({ name: newMember.user.tag, iconURL: newMember.user.displayAvatarURL() }).setTimestamp();
+        if (added) embed.setTitle("Role Added").setDescription(`Added **${added.name}** to ${newMember.user}`);
+        if (removed) embed.setTitle("Role Removed").setDescription(`Removed **${removed.name}** from ${newMember.user}`);
+        await sendLog(newMember.guild, LOG_CHANNELS.ROLE, embed);
+    }
+    if (oldMember.nickname !== newMember.nickname) {
+        const embed = new EmbedBuilder()
+            .setColor("#E91E63")
+            .setTitle("Nickname Changed")
+            .setAuthor({ name: newMember.user.tag, iconURL: newMember.user.displayAvatarURL() })
+            .addFields({ name: "Old Nickname", value: oldMember.nickname || "None", inline: true }, { name: "New Nickname", value: newMember.nickname || "None", inline: true })
+            .setTimestamp();
+        await sendLog(newMember.guild, LOG_CHANNELS.NICKNAME, embed);
+    }
 });
+
 client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
-    // ... your original code
+    const embed = new EmbedBuilder().setColor("#F1C40F").setTitle("Server Updated").setTimestamp();
+    if (oldGuild.name !== newGuild.name) embed.addFields({ name: "Name Changed", value: `${oldGuild.name} ➡️ ${newGuild.name}` });
+    if (oldGuild.icon !== newGuild.icon) embed.addFields({ name: "Icon Changed", value: "Server icon was updated." });
+    await sendLog(newGuild, LOG_CHANNELS.SERVER, embed);
 });
+
 client.on(Events.InviteCreate, async (invite) => {
-    // ... your original code
+    const embed = new EmbedBuilder()
+        .setColor("#2ECC71")
+        .setTitle("Invite Link Created")
+        .addFields({ name: "Code", value: invite.code, inline: true }, { name: "Creator", value: invite.inviter?.tag || "Unknown", inline: true }, { name: "Channel", value: `<#${invite.channelId}>`, inline: true })
+        .setTimestamp();
+    await sendLog(invite.guild, LOG_CHANNELS.INVITE, embed);
 });
+
 client.on("messageDelete", async (message) => {
-    // ... your original code
+    if (message.author?.bot || !message.guild) return;
+    const log = new EmbedBuilder().setColor("#E74C3C").setTitle("Message Deleted").addFields({ name: "Author", value: message.author.tag }, { name: "Channel", value: `<#${message.channel.id}>` }, { name: "Content", value: message.content || "No Content (Embed/File)" }).setTimestamp();
+    await sendLog(message.guild, LOG_CHANNELS.MSG, log);
 });
+
 client.on("messageUpdate", async (oldMsg, newMsg) => {
-    // ... your original code
+    if (oldMsg.author?.bot || oldMsg.content === newMsg.content) return;
+    const log = new EmbedBuilder().setColor("#F1C40F").setTitle("Message Edited").addFields({ name: "Author", value: oldMsg.author.tag }, { name: "Channel", value: `<#${oldMsg.channel.id}>` }, { name: "Before", value: oldMsg.content || "None" }, { name: "After", value: newMsg.content || "None" }).setTimestamp();
+    await sendLog(oldMsg.guild, LOG_CHANNELS.MSG, log);
 });
+
 client.on("messageCreate", async (message) => {
-    // ... your original code
+    if (message.author.bot || !message.guild) return;
+    if (antiLinkChannels.has(message.channel.id) && /https?:\/\/\S+/gi.test(message.content)) {
+        await message.delete().catch(() => {});
+        return message.channel.send(`${message.author}, Links are not allowed!`).then(m => setTimeout(() => m.delete(), 5000));
+    }
+    if (antiMentionChannels.has(message.channel.id) && message.mentions.members.size >= 5) {
+        await message.delete().catch(() => {});
+        return message.channel.send(`${message.author}, Mass mentions are not allowed!`).then(m => setTimeout(() => m.delete(), 5000));
+    }
+    if (antiSpamChannels.has(message.channel.id)) {
+        const key = `${message.guild.id}-${message.author.id}`;
+        if (!warnings[key]) warnings[key] = [];
+        warnings[key].push(Date.now());
+        warnings[key] = warnings[key].filter(t => Date.now() - t < 5000);
+        if (warnings[key].length >= 6) {
+            await message.delete().catch(() => {});
+            if (warnings[key].length === 8) await message.member.timeout(60000, "Spamming");
+        }
+    }
 });
+
 client.on("voiceStateUpdate", async (oldState, newState) => {
-    // ... your original code
+    if (oldState.member.user.bot) return;
+    const guild = oldState.guild;
+    let embed = new EmbedBuilder().setTimestamp().setAuthor({ name: oldState.member.user.tag, iconURL: oldState.member.user.displayAvatarURL() });
+    if (!oldState.channelId && newState.channelId) {
+        embed.setColor("#2ECC71").setTitle("Voice Channel Joined").setDescription(`Member joined <#${newState.channelId}>`);
+    } else if (oldState.channelId && !newState.channelId) {
+        embed.setColor("#E74C3C").setTitle("Voice Channel Left").setDescription(`Member left <#${oldState.channelId}>`);
+    } else if (oldState.channelId !== newState.channelId) {
+        embed.setColor("#3498DB").setTitle("Voice Channel Moved").setDescription(`Moved from <#${oldState.channelId}> to <#${newState.channelId}>`);
+    } else return;
+    await sendLog(guild, LOG_CHANNELS.VC, embed);
 });
+
 client.on('guildMemberAdd', async member => {
-    // ... your original code
+    const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (channel) {
+        const welcomeEmbed = new EmbedBuilder()
+            .setColor("#8B0000")
+            .setTitle("Welcome to Tec Trader")
+            .setDescription(`Welcome <@${member.id}> to **Tec Trader**!\n\n• Read the rules & TOS: <#1337263610321305650>\n• Need support? Create a ticket: <#1337266092812406844>\n• Leave your vouch / feedback here: <#1403799364706767019>`)
+            .addFields({ name: "Total Members", value: `${member.guild.memberCount}`, inline: true })
+            .setThumbnail(member.user.displayAvatarURL({ forceStatic: true }))
+            .setFooter({ text: "Tec Trader • Enjoy your stay!" })
+            .setTimestamp();
+        await channel.send({ content: `<@${member.id}>`, embeds: [welcomeEmbed] });
+    }
+    const log = new EmbedBuilder().setColor("#2ECC71").setTitle("Member Joined").setThumbnail(member.user.displayAvatarURL()).addFields({ name: "User", value: `${member.user.tag} (${member.id})` }, { name: "Created At", value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>` }).setTimestamp();
+    await sendLog(member.guild, LOG_CHANNELS.JOIN, log);
 });
+
 client.on('guildMemberRemove', async member => {
-    // ... your original code
+    const channel = member.guild.channels.cache.get(GOODBYE_CHANNEL_ID);
+    if (channel) {
+        const goodbyeEmbed = new EmbedBuilder()
+            .setColor("#8B0000")
+            .setTitle("Tec Trader")
+            .setDescription(`**${member.user.tag}** has left the shadows...\n\nThe darkness will miss you.\nCome back anytime...`)
+            .setThumbnail(member.user.displayAvatarURL({ forceStatic: true }))
+            .setImage("https://cdn.discordapp.com/attachments/1337788828051701873/1480098172075376743/standard_1.gif")
+            .setAuthor({ name: "Tec Trader", iconURL: client.user.displayAvatarURL({ forceStatic: true }) })
+            .setFooter({ text: "Tec Trader • The Void Awaits" })
+            .setTimestamp();
+        await channel.send({ embeds: [goodbyeEmbed] });
+    }
+    const log = new EmbedBuilder().setColor("#E74C3C").setTitle("Member Left").setThumbnail(member.user.displayAvatarURL()).addFields({ name: "User", value: `${member.user.tag} (${member.id})` }).setTimestamp();
+    await sendLog(member.guild, LOG_CHANNELS.JOIN, log);
 });
 
 client.login(TOKEN);
