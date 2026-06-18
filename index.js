@@ -134,15 +134,81 @@ client.on("interactionCreate", async (interaction) => {
                 return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(select)] });
             }
             // Baaki sab commands same
-            if (cmd === "kick") { /* same as your code */ }
-            if (cmd === "ban") { /* same */ }
-            if (cmd === "mute") { /* same */ }
-            if (cmd === "unmute") { /* same */ }
-            if (cmd === "warn") { /* same */ }
-            if (cmd === "clear") { /* same */ }
-            if (cmd === "msg") { /* same */ }
-            if (cmd === "legit") { /* same */ }
-            if (["antispam", "antilink", "antimention"].includes(cmd)) { /* same */ }
+            if (cmd === "kick") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const reason = interaction.options.getString("reason") || "No reason";
+                await target.kick(reason);
+                const log = new EmbedBuilder().setColor("#FFA500").setTitle("Member Kicked").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Reason", value: reason }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Kicked ${target.user.tag}`);
+            }
+            if (cmd === "ban") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const reason = interaction.options.getString("reason") || "No reason";
+                await target.ban({ reason });
+                const log = new EmbedBuilder().setColor("#FF0000").setTitle("Member Banned").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Reason", value: reason }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Banned ${target.user.tag}`);
+            }
+            if (cmd === "mute") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const mins = interaction.options.getInteger("minutes");
+                const reason = interaction.options.getString("reason") || "No reason";
+                await target.timeout(mins * 60000, reason);
+                const log = new EmbedBuilder().setColor("#E67E22").setTitle("Member Muted (Timeout)").addFields({ name: "Target", value: target.user.tag }, { name: "Duration", value: `${mins} mins` }, { name: "Moderator", value: interaction.user.tag }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Muted ${target.user.tag} for ${mins}m`);
+            }
+            if (cmd === "unmute") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                await target.timeout(null);
+                const log = new EmbedBuilder().setColor("#2ECC71").setTitle("Member Unmuted").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`✅ Unmuted ${target.user.tag}`);
+            }
+            if (cmd === "warn") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const target = interaction.options.getMember("user");
+                const key = `${interaction.guild.id}-${target.id}`;
+                if (!warnings[key]) warnings[key] = [];
+                warnings[key].push(Date.now());
+                const log = new EmbedBuilder().setColor("#F1C40F").setTitle("Warning Issued").addFields({ name: "Target", value: target.user.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Total Warns", value: `${warnings[key].length}` }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply(`⚠️ Warned ${target.user.tag}. Total warnings: ${warnings[key].length}`);
+            }
+            if (cmd === "clear") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const amount = interaction.options.getInteger("amount");
+                await interaction.channel.bulkDelete(amount, true);
+                const log = new EmbedBuilder().setColor("#34495E").setTitle("Messages Cleared").addFields({ name: "Channel", value: `<#${interaction.channel.id}>` }, { name: "Amount", value: `${amount}` }, { name: "Moderator", value: interaction.user.tag }).setTimestamp();
+                await sendLog(interaction.guild, LOG_CHANNELS.MOD, log);
+                return interaction.reply({ content: `✅ Deleted ${amount} messages`, ephemeral: true });
+            }
+            if (cmd === "msg") {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                const chanId = interaction.options.getString("channel_id");
+                const modal = new ModalBuilder().setCustomId(`modal_msg_${chanId}`).setTitle("Send Formatted Embed");
+                const input = new TextInputBuilder().setCustomId("msg_content").setLabel("Message Content").setStyle(TextInputStyle.Paragraph).setPlaceholder("Yahan apna formatted text paste karein...").setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(input));
+                return interaction.showModal(modal);
+            }
+            if (cmd === "legit") {
+                const embed = new EmbedBuilder().setColor("#8B0000").setTitle("Tec Trader - Embed").setDescription("**Are we Legit?**\n\n✅ = Yes\n❌ = Without Proof = Ban").setFooter({ text: "Developed by @BAASHAA • 3/10/2026" }).setTimestamp();
+                await interaction.channel.send({ embeds: [embed] });
+                return interaction.reply({ content: "✅ Sent!", ephemeral: true });
+            }
+            if (["antispam", "antilink", "antimention"].includes(cmd)) {
+                if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return interaction.reply({ content: "No Permission!", ephemeral: true });
+                let status;
+                if (cmd === "antispam") antiSpamChannels.has(interaction.channel.id) ? (antiSpamChannels.delete(interaction.channel.id), status = "disabled") : (antiSpamChannels.add(interaction.channel.id), status = "enabled");
+                if (cmd === "antilink") antiLinkChannels.has(interaction.channel.id) ? (antiLinkChannels.delete(interaction.channel.id), status = "disabled") : (antiLinkChannels.add(interaction.channel.id), status = "enabled");
+                if (cmd === "antimention") antiMentionChannels.has(interaction.channel.id) ? (antiMentionChannels.delete(interaction.channel.id), status = "disabled") : (antiMentionChannels.add(interaction.channel.id), status = "enabled");
+                return interaction.reply({ content: `✅ ${cmd} is now **${status}**`, ephemeral: true });
+            }
         }
 
         // ===== MODAL SUBMIT HANDLER =====
@@ -187,7 +253,7 @@ client.on("interactionCreate", async (interaction) => {
                 ];
             } else {
                 interaction.fields.fields.forEach(f => {
-                    fields.push({ name: f.customId.toUpperCase().replace(/_/g, " "), value: f.value || "N/A" });
+                    fields.push({ name: f.customId.toUpperCase().replace(/_/g, " "), value: `\`\`\`${f.value || "N/A"}\`\`\`` });
                 });
             }
 
@@ -204,7 +270,7 @@ client.on("interactionCreate", async (interaction) => {
             );
 
             await ticketChannel.send({
-                content: `<@${interaction.user.id}> <@&${STAFF_ROLE_ID}>`,
+                content: `<@${interaction.user.id}> <@&${STAFF_ROLE_ID}>\n\n**Staff team will help you soon please wait**\nSupport will be with you shortly`,
                 embeds: [embed],
                 components: [row]
             });
@@ -306,7 +372,9 @@ client.on("interactionCreate", async (interaction) => {
                 const buffer = Buffer.from(transcript, "utf-8");
                 const log = new EmbedBuilder().setColor("#000000").setTitle("Ticket Deleted").addFields({ name: "Channel", value: interaction.channel.name }, { name: "Deleted By", value: interaction.user.tag }).setTimestamp();
                 const ticketLogChan = interaction.guild.channels.cache.get(LOG_CHANNELS.TICKET);
-                if (ticketLogChan) await ticketLogChan.send({ embeds: [log], files: [{ attachment: buffer, name: `transcript-${interaction.channel.id}.txt` }] });
+                if (ticketLogChan) {
+                    await ticketLogChan.send({ embeds: [log], files: [{ attachment: buffer, name: `transcript-${interaction.channel.id}.txt` }] });
+                }
                 return interaction.channel.delete();
             }
         }
