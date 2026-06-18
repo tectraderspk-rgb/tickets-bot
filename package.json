@@ -1,0 +1,17 @@
+{
+  "name": "discord-multi-feature-bot",
+  "version": "1.1.0",
+  "description": "Tec Trader - Multi feature Discord bot (Moderation + Advanced Tickets + Logging)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
